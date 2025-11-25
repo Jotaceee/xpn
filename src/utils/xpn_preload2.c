@@ -88,7 +88,7 @@
 
     Copy_args * cp_args = (Copy_args *) args;
 
-    // if (rank == 0) printf("entry %s dir_name %s dest_prefix %s blocksize %d replication_level %d rank %d size %d first block %d num blocks %d, replica %d\n", cp_args->entry, cp_args->dir_name, cp_args->dest_prefix, blocksize, replication_level, rank, size, cp_args->first_block, cp_args->num_blocks, cp_args->replica);
+    debug_info("entry %s dir_name %s dest_prefix %s blocksize %d replication_level %d rank %d size %d\n", cp_args->entry, cp_args->dir_name, cp_args->dest_prefix, blocksize, replication_level, rank, size);
 
     //Alocate buffer
     buf_len = blocksize;
@@ -154,13 +154,11 @@
         continue;
       }
       offset_src = first_block * blocksize ;
+
       for (int b = first_block; b < (cp_args->num_blocks); b+=size)
       {
         XpnCalculateBlockMdata(&mdata, offset_src, r, &local_offset, &local_server);
-      // if (rank == 0) printf("offset_src %d replica %d local offset %ld local server %d rank %d\n", offset_src, cp_args->replica, (off64_t)local_offset, local_server, rank);
 
-      // if (local_server == rank)
-      // {
         ret_2 = lseek64(fd_src, offset_src, SEEK_SET) ;
         if (ret_2 < 0) {
           perror("lseek: ");
@@ -182,11 +180,9 @@
           goto finish_copy;
         }
         local_size += write_size;
-        // }
         offset_src+=( size * blocksize );
       }
     }
-    // while(write_size > 0);
 
 finish_copy:
     // Update file size
@@ -303,35 +299,32 @@ finish_copy:
           }
         }
 
-          if (i >= num_threads)
-          {
-            pthread_join(threads[i % num_threads], NULL);
-            free(cp[i % num_threads]->entry);
-            free(cp[i % num_threads]->dir_name);
-            free(cp[i % num_threads]->dest_prefix);
-            free(cp[i % num_threads]);
-          }
+        if (i >= num_threads)
+        {
+          pthread_join(threads[i % num_threads], NULL);
+          free(cp[i % num_threads]->entry);
+          free(cp[i % num_threads]->dir_name);
+          free(cp[i % num_threads]->dest_prefix);
+          free(cp[i % num_threads]);
+        }
 
-          cp[i % num_threads] = (Copy_args *) malloc(sizeof(Copy_args));
-          cp[i % num_threads]->entry = strdup(path);
-          cp[i % num_threads]->dir_name = strdup(dir_name);
-          cp[i % num_threads]->dest_prefix = strdup(dest_prefix);
-          cp[i % num_threads]->master_node = master_node;
-          // cp[i % num_threads]->first_block = first_block;
-          // cp[i % num_threads]->replica = r;
-          cp[i % num_threads]->num_blocks = num_blocks;
+        cp[i % num_threads] = (Copy_args *) malloc(sizeof(Copy_args));
+        cp[i % num_threads]->entry = strdup(path);
+        cp[i % num_threads]->dir_name = strdup(dir_name);
+        cp[i % num_threads]->dest_prefix = strdup(dest_prefix);
+        cp[i % num_threads]->master_node = master_node;
+        cp[i % num_threads]->num_blocks = num_blocks;
 
-          if (pthread_create(
-              &threads[i % num_threads],
-              NULL,
-              &copy,
-              (void *) cp[i % num_threads]) != 0)
-          {
-              perror("Failed to create the thread\n");
-              return -1;
-          }
-          i++;
-        // }
+        if (pthread_create(
+            &threads[i % num_threads],
+            NULL,
+            &copy,
+            (void *) cp[i % num_threads]) != 0)
+        {
+            perror("Failed to create the thread\n");
+            return -1;
+        }
+        i++;
       }
       entry = readdir(dir);
     }
