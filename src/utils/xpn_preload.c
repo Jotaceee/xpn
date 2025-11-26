@@ -76,7 +76,7 @@
     ssize_t read_size, write_size;
     struct stat st;
 
-    // debug_info("entry %s is_file %d dir_name %s dest_prefix %s blocksize %d replication_level %d rank %d size %d \n",entry, is_file, dir_name, dest_prefix, blocksize, replication_level, rank, size);
+    debug_info("entry %s is_file %d dir_name %s dest_prefix %s blocksize %d replication_level %d rank %d size %d \n",entry, is_file, dir_name, dest_prefix, blocksize, replication_level, rank, size);
 
     //Alocate buffer
     buf_len = blocksize;
@@ -316,9 +316,9 @@ finish_copy:
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     start_time = MPI_Wtime();
-    // if (rank == 0){
-    //     printf("Copying from %s to %s blocksize %d replication_level %d \n", argv[1], argv[2], blocksize, replication_level);
-    // }
+    if (rank == 0){
+        printf("Copying from %s to %s blocksize %d replication_level %d \n", argv[1], argv[2], blocksize, replication_level);
+    }
     xpn_path_len = strlen(argv[2]);
     list (argv[1], argv[2], blocksize, replication_level, rank, size);
     MPI_Barrier(MPI_COMM_WORLD);
