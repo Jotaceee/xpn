@@ -558,6 +558,7 @@
               count++;
             }
             line_pos = 0;
+            debug_info("[BYPASS_HSM] >>     Tier %d - mounted on %s - size %ld is xpn - %d \n", tier[count-1].tier, tier[count-1].mount_path, tier[count-1].max_size, tier[count-1].is_xpn);
           } else {
               if (line_pos < (int)sizeof(line) - 1) line[line_pos++] = buf[i];
           }
@@ -709,6 +710,7 @@
           }
 
           if (fd >= 0) {
+            debug_info("[BYPASS_HSM] >>     File %s opened in tier %d\n", path, tier[i].tier);
             hsm_tier_append_file(updated_path, tier[i].tier);
             break;
           }
@@ -766,7 +768,10 @@
 
           if ((flags & O_CREAT) == O_CREAT) {
             if (((tier[i].is_xpn == 1) && (tier[i].current_size + 8192 > tier[i].max_size)) || 
-                ((tier[i].is_xpn == 0) && (tier[i].current_size > tier[i].max_size))) continue;
+                ((tier[i].is_xpn == 0) && (tier[i].current_size > tier[i].max_size))) {
+              debug_info("[BYPASS_HSM] >>     Tier %d is full, cannot creat file %s in this tier\n", tier[i].tier, path);
+              continue;
+            }
           }
 
           char updated_path[512];
@@ -784,6 +789,7 @@
           }
 
           if (fd >= 0) {
+            debug_info("[BYPASS_HSM] >>     File %s opened in tier %d\n", path, tier[i].tier);
             hsm_tier_append_file(updated_path, tier[i].tier);
             break;
           }
@@ -841,7 +847,10 @@
 
           if ((flags & O_CREAT) == O_CREAT) {
             if (((tier[i].is_xpn == 1) && (tier[i].current_size + 8192 > tier[i].max_size)) || 
-                ((tier[i].is_xpn == 0) && (tier[i].current_size > tier[i].max_size))) continue;
+                ((tier[i].is_xpn == 0) && (tier[i].current_size > tier[i].max_size))) {
+              debug_info("[BYPASS_HSM] >>     Tier %d is full, cannot creat file %s in this tier\n", tier[i].tier, path);
+              continue;
+            }
           }
 
           char updated_path[512];
@@ -859,6 +868,7 @@
           }
 
           if (fd >= 0) {
+            debug_info("[BYPASS_HSM] >>     File %s opened in tier %d\n", path, tier[i].tier);
             hsm_tier_append_file(updated_path, tier[i].tier);
             break;
           }
@@ -917,9 +927,12 @@
           }
 
           if (fd >= 0) {
+            debug_info("[BYPASS_HSM] >>     File %s created in tier %d\n", path, tier[i].tier);
             if (tier[i].is_xpn == 1) tier[i].current_size += 8192;
             hsm_tier_append_file(updated_path, tier[i].tier);
             break;
+          } else {
+            debug_info("[BYPASS_HSM] >>     File %s could not be created in tier %d\n", path, tier[i].tier);
           }
         }
 
@@ -945,15 +958,16 @@
     int mkstemp (char *template)
     {
       int ret = -1;
+      int i;
 
-      debug_info("[BYPASS] >> Begin mkstemp...\n");
-      debug_info("[BYPASS]    1) template %s\n", template);
+      debug_info("[BYPASS_HSM] >> Begin mkstemp...\n");
+      debug_info("[BYPASS_HSM]    1) template %s\n", template);
 
       // This if checks if variable path passed as argument starts with the expand prefix.
       if (is_xpn_prefix(template))
       {
         // It is an XPN partition, so we redirect the syscall to expand syscall
-        debug_info("[BYPASS]\t try to creat %s", skip_xpn_prefix(template));
+        debug_info("[BYPASS_HSM]\t try to creat %s\n", skip_xpn_prefix(template));
 
         srand(time(NULL));
         int n = rand()%100000;
@@ -961,10 +975,32 @@
         char *str_init = strstr(template, "XXXXXX");
         sprintf(str_init,"%06d", n);
 
-        int fd  = xpn_creat((const char *)skip_xpn_prefix(template), S_IRUSR | S_IWUSR);
-        ret = add_xpn_file_to_fdstable(fd, 0, skip_xpn_prefix(template));
+        // We must initialize expand if it has not been initialized
+        xpn_adaptor_keepInit();
 
-        debug_info("[BYPASS]\t creat %s -> %d", skip_xpn_prefix(template), ret);
+        for (i = 0; i < num_tiers; i++) {
+          if ((tier[i].is_xpn && tier[i].current_size + 8192 > tier[i].max_size) ||
+              (!tier[i].is_xpn && tier[i].current_size > tier[i].max_size)) continue;
+
+          if (tier[i].is_xpn){
+
+            char updated_path[512];
+            snprintf(updated_path, sizeof(updated_path), "%s/%s", tier[i].mount_path,  skip_xpn_prefix(template));
+            int fd  = xpn_creat((const char *)updated_path, S_IRUSR | S_IWUSR);
+            if (fd >= 0) {
+              tier[i].current_size += 8192;
+              hsm_tier_append_file(skip_xpn_prefix(template), tier[i].tier);                
+              ret = add_xpn_file_to_fdstable(fd, i, skip_xpn_prefix(template));
+            }
+            break;
+
+          } else {
+            ret = dlsym_mkstemp(template);
+          }
+
+        };
+
+        debug_info("[BYPASS_HSM]\t creat %s -> %d", skip_xpn_prefix(template), ret);
       }
       // Not an XPN partition. We must link with the standard library
       else
